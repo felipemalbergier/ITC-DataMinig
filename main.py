@@ -21,3 +21,9 @@ Categorie -> URL
 h3 Goes to index 49 
 Do a logic that scrapes the index untill it get less than 7 articles.
 '''
+def main():
+    r = requests.get(URL)
+    soup = BeautifulSoup(r)
+    print(soup.title)
+if __name__ == "__main__":
+    main()
