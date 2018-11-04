@@ -1,3 +1,10 @@
+#!/usr/bin/env python
+"""
+This is a Web Scraper that crawls investopedia.com fetching articles.
+It is a project at ITC - Israel Tech Challange Program.
+
+Authors: Felipe Malbergier and Shalom Azar
+"""
 import requests
 from bs4 import BeautifulSoup
 import re
