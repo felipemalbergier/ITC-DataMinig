@@ -9,10 +9,21 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import click
+import sqlite3
 
 BASE_URL = "https://www.investopedia.com"
 NEWS_URL = r'/news/?page={}'
 VISITED_URLS = set()
+article_information_ID = 0
+
+
+def create_db():
+    con = sqlite3.connect('investopedia_data.db')
+    cur = con.cursor()
+    cur.execute("CREATE TABLE article_information (ID int, url TEXT, title varchar(255), date DATETIME, author_id int, category_id int, content TEXT, PRIMARY KEY (ID))")
+    cur.execute("CREATE TABLE authors (ID int primary , name varchar(255), PRIMARY KEY (ID))")
+    cur.execute("CREATE TABLE categories (ID int primary , name varchar(255), PRIMARY KEY (ID))")
+    con.close()
 
 
 def url_to_soup(url):
@@ -30,6 +41,12 @@ def parse_page_information(url, title, date, author, content, describe):
     date_string = soup_news.find('meta', {'property': "article:published_time"})['content']
     author_string = soup_news.find('span', {'class': 'by-author'}).a.text
     content_string = soup_news.find('div', {'class': 'content-box'})
+    # article_information_ID += 1
+    # values = [article_information_ID, url, title_string, date_string, author_string, category, content_string]
+
+    # con = sqlite3.connect('investopedia_data.db')
+    # cur = con.cursor()
+    # cur.execute("INSERT INTO article_information (ID, url, title, date, author_id, category_id, content) VALUES (?,?,?,?,?)", values)
 
     if describe:
         title = True
@@ -55,6 +72,16 @@ def get_list_href(url):
     hrefs = soup.find_all('', {'href': True})
     hrefs = [BASE_URL + u['href'] for u in hrefs if re.match(r'/[^/]', u['href'])]
     return hrefs
+
+def fdf(DB_FILENAME):
+    con = sqlite3.connect(DB_FILENAME)
+    cur = con.cursor()
+    cur.execute("CREATE TABLE investopedia_data (url varchar(255), title varchar(255), date varchar(255), "
+                "author varchar(255), content varchar(999999)")
+    #insert a trip
+    cur.execute("INSERT INTO investopedia_data (column1, column2, column3, ...) VALUES (value1, value2, value3, ...)")
+    con.commit()
+    cur.close()
 
 
 @click.command()
