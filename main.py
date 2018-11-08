@@ -20,10 +20,23 @@ article_information_ID = 0
 def create_db():
     con = sqlite3.connect('investopedia_data.db')
     cur = con.cursor()
-    cur.execute("CREATE TABLE article_information (ID int, url TEXT, title varchar(255), date DATETIME, author_id int, category_id int, content TEXT, PRIMARY KEY (ID))")
-    cur.execute("CREATE TABLE authors (ID int primary , name varchar(255), PRIMARY KEY (ID))")
-    cur.execute("CREATE TABLE categories (ID int primary , name varchar(255), PRIMARY KEY (ID))")
+    cur.execute("DROP TABLE article_information")
+    cur.execute("DROP TABLE authors")
+    cur.execute("DROP TABLE categories")
+    cur.execute("CREATE TABLE article_information (ID int AUTO_INCREMENT, url TEXT, title varchar(255), date varchar(255), author_id int, category_id int, content TEXT, PRIMARY KEY(ID))")
+    cur.execute("CREATE TABLE authors (ID int AUTO_INCREMENT, name varchar(255) unique, PRIMARY KEY(ID))")
+    cur.execute("CREATE TABLE categories (ID int AUTO_INCREMENT, name varchar(255) unique,  PRIMARY KEY(ID))")
+    con.commit()
     con.close()
+
+def get_db():
+    con = sqlite3.connect('investopedia_data.db')
+    cur = con.cursor()
+    cur.execute("Select * from article_information")
+    article_information = cur.fetchall()
+    print(article_information)
+    con.close()
+
 
 
 def url_to_soup(url):
@@ -33,20 +46,41 @@ def url_to_soup(url):
     return soup
 
 
-def parse_page_information(url, title, date, author, content, describe):
+def parse_page_information(url, title, date, author, content, describe, author_id, category_id):
     """Prints (for now) the article information in the page depending on the parameters given."""
     soup_news = url_to_soup(url)
-    
+
+    category_string = soup_news.find('meta', {'property': 'emailprimarychannel'})['content']
+    category_string = category_string.lower()
     title_string = soup_news.find('h1').text.strip()
     date_string = soup_news.find('meta', {'property': "article:published_time"})['content']
     author_string = soup_news.find('span', {'class': 'by-author'}).a.text
-    content_string = soup_news.find('div', {'class': 'content-box'})
-    # article_information_ID += 1
-    # values = [article_information_ID, url, title_string, date_string, author_string, category, content_string]
+    author_string = author_string.lower()
+    content_string = str(soup_news.find('div', {'class': 'content-box'}))
 
-    # con = sqlite3.connect('investopedia_data.db')
-    # cur = con.cursor()
-    # cur.execute("INSERT INTO article_information (ID, url, title, date, author_id, category_id, content) VALUES (?,?,?,?,?)", values)
+    con = sqlite3.connect('investopedia_data.db')
+    cur = con.cursor()
+    try:
+        cur.execute("INSERT INTO authors (name, id) VALUES (?, ?)", [author_string, author_id])
+        con.commit()
+        author_id += 1
+    except sqlite3.IntegrityError:
+        pass
+    try:
+        cur.execute("INSERT INTO categories (name, id) VALUES (?, ?)", [category_string, category_id])
+        con.commit()
+        category_id += 1
+    except sqlite3.IntegrityError:
+        pass
+    cur.execute("Select * from authors")
+    authors_names = cur.fetchall()
+    cur.execute("Select * from categories")
+    category_ids = cur.fetchall()
+    values = [url, title_string, date_string, authors_names[-1][0], category_ids[-1][0], content_string]
+    cur.execute("INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (?,?,?,?,?,?)", values)
+    con.commit()
+
+
 
     if describe:
         title = True
@@ -56,6 +90,7 @@ def parse_page_information(url, title, date, author, content, describe):
 
     print("-"*40)
     print('URL: {url}'.format(url=url))
+    print('Category: {categorystring}'.format(categorystring=category_string))
     if title:
         print('Title: {title}'.format(title=title_string))
     if date:
@@ -73,16 +108,6 @@ def get_list_href(url):
     hrefs = [BASE_URL + u['href'] for u in hrefs if re.match(r'/[^/]', u['href'])]
     return hrefs
 
-def fdf(DB_FILENAME):
-    con = sqlite3.connect(DB_FILENAME)
-    cur = con.cursor()
-    cur.execute("CREATE TABLE investopedia_data (url varchar(255), title varchar(255), date varchar(255), "
-                "author varchar(255), content varchar(999999)")
-    #insert a trip
-    cur.execute("INSERT INTO investopedia_data (column1, column2, column3, ...) VALUES (value1, value2, value3, ...)")
-    con.commit()
-    cur.close()
-
 
 @click.command()
 @click.option('--title', is_flag=True)
@@ -91,8 +116,12 @@ def fdf(DB_FILENAME):
 @click.option('--content', is_flag=True)
 @click.option('--describe', is_flag=True)
 def main(title, date, author, content, describe):
+    create_db()
     URLS_TO_VISIT = []
     URLS_TO_VISIT.append(BASE_URL)
+
+    author_id = 0
+    category_id = 0
 
     while len(URLS_TO_VISIT) > 0:
 
@@ -103,7 +132,7 @@ def main(title, date, author, content, describe):
         #print(url_to_visit + '\r')
 
         try:
-            parse_page_information(url_to_visit, title, date, author, content, describe)
+            author_id, category_id = parse_page_information(url_to_visit, title, date, author, content, describe, author_id, category_id)
         except AttributeError:
             print('.')
         except TypeError:
