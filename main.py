@@ -9,16 +9,20 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import click
-import sqlite3
+import pymysql
 
 BASE_URL = "https://www.investopedia.com"
 NEWS_URL = r'/news/?page={}'
 VISITED_URLS = set()
 article_information_ID = 0
 
+username = 'root'
+passwrd ='azaritc123'
+DB ='investopedia'
+
 
 def create_db():
-    con = sqlite3.connect('investopedia_data.db')
+    con = pymysql.connect(user=username, password=passwrd, db=DB)
     cur = con.cursor()
     cur.execute("DROP TABLE article_information")
     cur.execute("DROP TABLE authors")
@@ -29,14 +33,14 @@ def create_db():
     con.commit()
     con.close()
 
+
 def get_db():
-    con = sqlite3.connect('investopedia_data.db')
+    con = pymysql.connect(user=username, password=passwrd, db=DB)
     cur = con.cursor()
     cur.execute("Select * from article_information")
     article_information = cur.fetchall()
     print(article_information)
     con.close()
-
 
 
 def url_to_soup(url):
@@ -46,7 +50,30 @@ def url_to_soup(url):
     return soup
 
 
-def parse_page_information(url, title, date, author, content, describe, author_id, category_id):
+def insert_db(url, title_string, date_string, author_string, category_string, content_string):
+    con = pymysql.connect(user=username, password=passwrd, db=DB)
+    cur = con.cursor()
+    try:
+        cur.execute("INSERT INTO authors (name) VALUES (%s)", [author_string])
+        con.commit()
+    except pymysql.IntegrityError:
+        pass
+    try:
+        cur.execute("INSERT INTO categories (name) VALUES (%s)", [category_string])
+        con.commit()
+    except pymysql.IntegrityError:
+        pass
+    cur.execute("Select id from authors where name = (%s)", [author_string])
+    authors_id = cur.fetchone()[0]
+    cur.execute("Select id from categories where name = (%s)", category_string)
+    category_id = cur.fetchone()[0]
+    values = [url, title_string, date_string, authors_id, category_id, content_string]
+    cur.execute("INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)", values)
+    con.commit()
+
+
+
+def parse_page_information(url, title, date, author, content, describe):
     """Prints (for now) the article information in the page depending on the parameters given."""
     soup_news = url_to_soup(url)
 
@@ -58,29 +85,7 @@ def parse_page_information(url, title, date, author, content, describe, author_i
     author_string = author_string.lower()
     content_string = str(soup_news.find('div', {'class': 'content-box'}))
 
-    con = sqlite3.connect('investopedia_data.db')
-    cur = con.cursor()
-    try:
-        cur.execute("INSERT INTO authors (name, id) VALUES (?, ?)", [author_string, author_id])
-        con.commit()
-        author_id += 1
-    except sqlite3.IntegrityError:
-        pass
-    try:
-        cur.execute("INSERT INTO categories (name, id) VALUES (?, ?)", [category_string, category_id])
-        con.commit()
-        category_id += 1
-    except sqlite3.IntegrityError:
-        pass
-    cur.execute("Select * from authors")
-    authors_names = cur.fetchall()
-    cur.execute("Select * from categories")
-    category_ids = cur.fetchall()
-    values = [url, title_string, date_string, authors_names[-1][0], category_ids[-1][0], content_string]
-    cur.execute("INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (?,?,?,?,?,?)", values)
-    con.commit()
-
-
+    insert_db(url, title_string, date_string, author_string, category_string, content_string)
 
     if describe:
         title = True
@@ -120,19 +125,14 @@ def main(title, date, author, content, describe):
     URLS_TO_VISIT = []
     URLS_TO_VISIT.append(BASE_URL)
 
-    author_id = 0
-    category_id = 0
-
     while len(URLS_TO_VISIT) > 0:
 
         url_to_visit = URLS_TO_VISIT.pop(0)
         while url_to_visit in VISITED_URLS:
             url_to_visit = URLS_TO_VISIT.pop(0)
 
-        #print(url_to_visit + '\r')
-
         try:
-            author_id, category_id = parse_page_information(url_to_visit, title, date, author, content, describe, author_id, category_id)
+            parse_page_information(url_to_visit, title, date, author, content, describe)
         except AttributeError:
             print('.')
         except TypeError:
