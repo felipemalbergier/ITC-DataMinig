@@ -6,81 +6,109 @@ It is a project at ITC - Israel Tech Challange Program.
 Authors: Felipe Malbergier and Shalom Azar
 """
 import requests
+from fake_useragent import UserAgent
 from bs4 import BeautifulSoup
 import re
 import click
-import sqlite3
+import os
+from datetime import datetime
+import pymysql
+import sys
+import time
 
 BASE_URL = "https://www.investopedia.com"
-NEWS_URL = r'/news/?page={}'
 VISITED_URLS = set()
-article_information_ID = 0
+
+USERNAME = 'root'
+PASSWRD = 'sqlvaldo'
+DB ='investopedia'
 
 
 def create_db():
-    con = sqlite3.connect('investopedia_data.db')
+    con = pymysql.connect(user=USERNAME, password=PASSWRD)
     cur = con.cursor()
-    cur.execute("DROP TABLE article_information")
-    cur.execute("DROP TABLE authors")
-    cur.execute("DROP TABLE categories")
-    cur.execute("CREATE TABLE article_information (ID int AUTO_INCREMENT, url TEXT, title varchar(255), date varchar(255), author_id int, category_id int, content TEXT, PRIMARY KEY(ID))")
-    cur.execute("CREATE TABLE authors (ID int AUTO_INCREMENT, name varchar(255) unique, PRIMARY KEY(ID))")
-    cur.execute("CREATE TABLE categories (ID int AUTO_INCREMENT, name varchar(255) unique,  PRIMARY KEY(ID))")
+    cur.execute("CREATE DATABASE IF NOT EXISTS {} ;".format(DB))
+    cur.execute("USE {};".format(DB))
+    cur.execute("DROP TABLE IF EXISTS article_information ;")
+    cur.execute("DROP TABLE IF EXISTS authors ;")
+    cur.execute("DROP TABLE IF EXISTS categories ;")
+    cur.execute("CREATE TABLE authors (id int AUTO_INCREMENT, name varchar(255) unique, PRIMARY KEY(id));")
+    cur.execute("CREATE TABLE categories (id int AUTO_INCREMENT, name varchar(255) unique,  PRIMARY KEY(id));")
+    cur.execute("""CREATE TABLE article_information 
+    (id int AUTO_INCREMENT, 
+    url varchar(1000) unique, 
+    title varchar(255), 
+    date DATETIME, 
+    author_id int, 
+    category_id int, 
+    content TEXT, 
+    
+    PRIMARY KEY(id) 
+     /* FOREIGN KEY (author_id) REFERENCES authors(id)
+    FOREIGN KEY (category_id) REFERENCES categories(id) */
+    );""")
     con.commit()
     con.close()
-
-def get_db():
-    con = sqlite3.connect('investopedia_data.db')
-    cur = con.cursor()
-    cur.execute("Select * from article_information")
-    article_information = cur.fetchall()
-    print(article_information)
-    con.close()
-
 
 
 def url_to_soup(url):
     """Returns a soup object from the 'url' given."""
-    r = requests.get(url)
+    headers = {
+        'User-Agent': UserAgent().random,
+        'From': 'youremail@domain.com'  # This is another valid field
+    }
+    for tries in range(5):
+        try:
+            r = requests.get(url, timeout=60, headers=headers)
+            break
+        except TimeoutError:
+            print('Not succesful in the {} try.'.format(tries))
+            time.sleep(15)
     soup = BeautifulSoup(r.text, 'lxml')
     return soup
 
 
-def parse_page_information(url, title, date, author, content, describe, author_id, category_id):
-    """Prints (for now) the article information in the page depending on the parameters given."""
-    soup_news = url_to_soup(url)
-
-    category_string = soup_news.find('meta', {'property': 'emailprimarychannel'})['content']
-    category_string = category_string.lower()
-    title_string = soup_news.find('h1').text.strip()
-    date_string = soup_news.find('meta', {'property': "article:published_time"})['content']
-    author_string = soup_news.find('span', {'class': 'by-author'}).a.text
-    author_string = author_string.lower()
-    content_string = str(soup_news.find('div', {'class': 'content-box'}))
-
-    con = sqlite3.connect('investopedia_data.db')
+def insert_db(url, title, date, author, category, content):
+    con = pymysql.connect(user=USERNAME, password=PASSWRD, db=DB)
     cur = con.cursor()
     try:
-        cur.execute("INSERT INTO authors (name, id) VALUES (?, ?)", [author_string, author_id])
+        author_id = cur.execute("INSERT INTO authors (name) VALUES (%s)", [author])
         con.commit()
-        author_id += 1
-    except sqlite3.IntegrityError:
-        pass
+    except pymysql.err.IntegrityError:
+        print("Author: {} already on the database.".format(author))
+        cur.execute("Select id from authors where name = (%s)", [author])
+        author_id = cur.fetchone()[0]
+
     try:
-        cur.execute("INSERT INTO categories (name, id) VALUES (?, ?)", [category_string, category_id])
+        category_id = cur.execute("INSERT INTO categories (name) VALUES (%s)", [category])
         con.commit()
-        category_id += 1
-    except sqlite3.IntegrityError:
-        pass
-    cur.execute("Select * from authors")
-    authors_names = cur.fetchall()
-    cur.execute("Select * from categories")
-    category_ids = cur.fetchall()
-    values = [url, title_string, date_string, authors_names[-1][0], category_ids[-1][0], content_string]
-    cur.execute("INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (?,?,?,?,?,?)", values)
+    except pymysql.err.IntegrityError:
+        print("Category: {} already on the database.".format(category))
+        cur.execute("Select id from categories where name = (%s)", category)
+        category_id = cur.fetchone()[0]
+
+    values = [url, title, date, author_id, category_id, content.text]
+    try:
+        cur.execute("INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)", values)
+    except pymysql.err.IntegrityError:
+        print("URL: {} already on the database".format(url))
     con.commit()
+    con.close()
 
 
+def parse_page_information(url, title, date, author, content, describe):
+    """Prints (for now) the article information in the page depending on the parameters given."""
+    soup = url_to_soup(url)
+
+    article_category = soup.find('meta', {'property': 'emailprimarychannel'})['content']
+    article_category = article_category.lower()
+    article_title = soup.find('h1').text.strip()
+    article_date = soup.find('meta', {'property': "article:published_time"})['content']
+    article_date = datetime.strptime(article_date.rsplit('-', 1)[0], r"%Y-%m-%dT%H:%M:%S")
+    article_author = soup.find('span', {'class': 'by-author'}).a.text
+    article_content = soup.find('div', {'class': 'content-box'})
+
+    insert_db(url, article_title, article_date, article_author, article_category, article_content)
 
     if describe:
         title = True
@@ -88,17 +116,17 @@ def parse_page_information(url, title, date, author, content, describe, author_i
         author = True
         content = True
 
-    print("-"*40)
+    print("-" * 40)
     print('URL: {url}'.format(url=url))
-    print('Category: {categorystring}'.format(categorystring=category_string))
+    print('Category: {categorystring}'.format(categorystring=article_category))
     if title:
-        print('Title: {title}'.format(title=title_string))
+        print('Title: {title}'.format(title=article_title))
     if date:
-        print('Date: {date}'.format(date=date_string))
+        print('Date: {date}'.format(date=article_date))
     if author:
-        print('Author: {author}'.format(author=author_string))
+        print('Author: {author}'.format(author=article_author))
     if content:
-        print('Len of Content: {len_content}'.format(len_content=len(content_string.text)))
+        print('Len of Content: {len_content}'.format(len_content=len(article_content.text)))
 
 
 def get_list_href(url):
@@ -109,19 +137,10 @@ def get_list_href(url):
     return hrefs
 
 
-@click.command()
-@click.option('--title', is_flag=True)
-@click.option('--date', is_flag=True)
-@click.option('--author', is_flag=True)
-@click.option('--content', is_flag=True)
-@click.option('--describe', is_flag=True)
-def main(title, date, author, content, describe):
-    create_db()
+def run_scrape_whole_website(title, date, author, content, describe):
+    """Starts scraping the whole website from the main URL."""
     URLS_TO_VISIT = []
     URLS_TO_VISIT.append(BASE_URL)
-
-    author_id = 0
-    category_id = 0
 
     while len(URLS_TO_VISIT) > 0:
 
@@ -129,10 +148,10 @@ def main(title, date, author, content, describe):
         while url_to_visit in VISITED_URLS:
             url_to_visit = URLS_TO_VISIT.pop(0)
 
-        #print(url_to_visit + '\r')
+        # print(url_to_visit + '\r')
 
         try:
-            author_id, category_id = parse_page_information(url_to_visit, title, date, author, content, describe, author_id, category_id)
+            parse_page_information(url_to_visit, title, date, author, content, describe)
         except AttributeError:
             print('.')
         except TypeError:
@@ -143,44 +162,45 @@ def main(title, date, author, content, describe):
         VISITED_URLS.add(url_to_visit)
 
 
+def run_scrape_indexes_pages(title, date, author, content, describe):
+    """Scrape articles iterating from the index pages"""
+    with open(os.path.join(sys.path[0], "index_pages.txt")) as f:
+        index_pages = f.read().splitlines()
+
+    # Loop in the index pages listed in index_pages.txt file
+    for index_page in index_pages:
+        soup = url_to_soup("{index_page}?page={page_num}".format(index_page=index_page, page_num=0))
+
+        # Get the number os pages
+        last_page_href = soup.find("li", {"class": "pager-last last"}).a["href"]
+        last_page_num = int(re.findall(r"page=(\d+)", last_page_href)[0])
+
+        # For each page scrape the content for each article
+        for page_num in range(last_page_num):
+            soup = url_to_soup("{index_page}?page={page_num}".format(index_page=index_page, page_num=page_num))
+
+            h3 = soup.find_all('h3')
+            for tag in h3:
+                href = tag.find('a', {"href": True})['href']
+                if not href.startswith(r'/ask'):
+                    url = BASE_URL + href
+                    parse_page_information(url, title, date, author, content, describe)
+
+
+@click.command()
+@click.option('--title', is_flag=True)
+@click.option('--date', is_flag=True)
+@click.option('--author', is_flag=True)
+@click.option('--content', is_flag=True)
+@click.option('--describe', is_flag=True)
+@click.option('--scrape_whole_website', is_flag=True)
+def main(title, date, author, content, describe, scrape_whole_website=False):
+    # create_db()
+    if scrape_whole_website:
+        run_scrape_whole_website(title, date, author, content, describe)
+    else:
+        run_scrape_indexes_pages(title, date, author, content, describe)
+
+
 if __name__ == "__main__":
     main()
-
-
-"""
-Indexes pages:
-- https://www.investopedia.com/news/
-- https://www.investopedia.com/investing/mutual-funds/news/
-- https://www.investopedia.com/investing/mutual-funds/education/
-- https://www.investopedia.com/investing/investing-basics/education/
-- https://www.investopedia.com/investing/investing-basics/strategy/
-- https://www.investopedia.com/tech/robo-advisor/
-- https://www.investopedia.com/investing/bonds-and-fixed-income/all/
-- https://www.investopedia.com/investing/bonds-and-fixed-income/education/
-- https://www.investopedia.com/investing/financial-analysis/all/
-- https://www.investopedia.com/investing/financial-analysis/education/
-- https://www.investopedia.com/investing/economics/
-- https://www.investopedia.com/small-business/
-- https://www.investopedia.com/personal-finance/insurance/
-- https://www.investopedia.com/personal-finance/credit-loans-mortgages/
-- https://www.investopedia.com/personal-finance/entrepreneurship/
-- https://www.investopedia.com/personal-finance/taxes/
-- https://www.investopedia.com/personal-finance/real-estate/
-- https://www.investopedia.com/personal-finance/budgeting-savings/
-- https://www.investopedia.com/wealth-management/personal-wealth-and-private-banking/
-- https://www.investopedia.com/wealth-management/estate-planning/
-- https://www.investopedia.com/wealth-management/real-estate/
-- https://www.investopedia.com/wealth-management/insurance/
-- https://www.investopedia.com/wealth-management/tax-strategy/
-- https://www.investopedia.com/wealth-management/high-net-worth-living/
-- https://www.investopedia.com/financial-advisor/mutual-funds/
-- https://www.investopedia.com/financial-advisor/retirement/
-- https://www.investopedia.com/financial-advisor/your-clients/
-- https://www.investopedia.com/financial-advisor/your-practice/
-- https://www.investopedia.com/financial-advisor/financial-advisor-technology/
-- https://www.investopedia.com/active-trading/trading-strategy-fundamentals/all/
-- https://www.investopedia.com/active-trading/trading-strategy-fundamentals/education/
-- https://www.investopedia.com/active-trading/options-and-futures/education/
-- https://www.investopedia.com/active-trading/options-and-futures/instruments/
-- https://www.investopedia.com/tech/
-"""
