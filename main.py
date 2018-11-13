@@ -21,7 +21,7 @@ VISITED_URLS = set()
 
 USERNAME = 'root'
 PASSWRD = 'sqlvaldo'
-DB ='investopedia'
+DB = 'investopedia'
 
 
 def create_db():
@@ -61,9 +61,11 @@ def url_to_soup(url):
         try:
             r = requests.get(url, timeout=60, headers=headers)
             break
-        except TimeoutError:
+        except TimeoutError as e:
             print('Not succesful in the {} try.'.format(tries))
             time.sleep(15)
+            print(e)
+            sys.exit()
     soup = BeautifulSoup(r.text, 'lxml')
     return soup
 
@@ -75,7 +77,7 @@ def insert_db(url, title, date, author, category, content):
         author_id = cur.execute("INSERT INTO authors (name) VALUES (%s)", [author])
         con.commit()
     except pymysql.err.IntegrityError:
-        print("Author: {} already on the database.".format(author))
+        print("Already on the database - Author: {}.".format(author))
         cur.execute("Select id from authors where name = (%s)", [author])
         author_id = cur.fetchone()[0]
 
@@ -83,15 +85,20 @@ def insert_db(url, title, date, author, category, content):
         category_id = cur.execute("INSERT INTO categories (name) VALUES (%s)", [category])
         con.commit()
     except pymysql.err.IntegrityError:
-        print("Category: {} already on the database.".format(category))
+        print("Already on the database - Category: {}.".format(category))
         cur.execute("Select id from categories where name = (%s)", category)
         category_id = cur.fetchone()[0]
 
     values = [url, title, date, author_id, category_id, content.text]
     try:
-        cur.execute("INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)", values)
+        cur.execute(
+            "INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)",
+            values)
     except pymysql.err.IntegrityError:
-        print("URL: {} already on the database".format(url))
+        print("Already on the database - URL: {}.".format(url))
+    except pymysql.err.InternalError as e:
+        with open("could_not_store_data.txt", 'a') as f:
+            f.write('{}\t{}\n'.format(url, str(e)))
     con.commit()
     con.close()
 
@@ -105,8 +112,10 @@ def parse_page_information(url, title, date, author, content, describe):
     article_title = soup.find('h1').text.strip()
     article_date = soup.find('meta', {'property': "article:published_time"})['content']
     article_date = datetime.strptime(article_date.rsplit('-', 1)[0], r"%Y-%m-%dT%H:%M:%S")
-    article_author = soup.find('span', {'class': 'by-author'}).a.text
+    article_author = soup.find('meta', {'name': 'author'})['content']
     article_content = soup.find('div', {'class': 'content-box'})
+    if not article_content:
+        article_content = soup.find('div', {'class': 'roth__content'})
 
     insert_db(url, article_title, article_date, article_author, article_category, article_content)
 
@@ -118,7 +127,6 @@ def parse_page_information(url, title, date, author, content, describe):
 
     print("-" * 40)
     print('URL: {url}'.format(url=url))
-    print('Category: {categorystring}'.format(categorystring=article_category))
     if title:
         print('Title: {title}'.format(title=article_title))
     if date:
@@ -164,11 +172,18 @@ def run_scrape_whole_website(title, date, author, content, describe):
 
 def run_scrape_indexes_pages(title, date, author, content, describe):
     """Scrape articles iterating from the index pages"""
+    try:
+        with open("position_scraping.txt") as f:
+            index_page, page_num = f.read().splitlines()
+    except FileNotFoundError:
+        page_num = 0
+        index_page = 'https://www.investopedia.com/news/'
+
     with open(os.path.join(sys.path[0], "index_pages.txt")) as f:
         index_pages = f.read().splitlines()
 
     # Loop in the index pages listed in index_pages.txt file
-    for index_page in index_pages:
+    for index_page in index_pages[index_pages.index(index_page):]:
         soup = url_to_soup("{index_page}?page={page_num}".format(index_page=index_page, page_num=0))
 
         # Get the number os pages
@@ -176,15 +191,20 @@ def run_scrape_indexes_pages(title, date, author, content, describe):
         last_page_num = int(re.findall(r"page=(\d+)", last_page_href)[0])
 
         # For each page scrape the content for each article
-        for page_num in range(last_page_num):
+        for page_num in range(int(page_num), last_page_num):
             soup = url_to_soup("{index_page}?page={page_num}".format(index_page=index_page, page_num=page_num))
 
             h3 = soup.find_all('h3')
             for tag in h3:
+                print("------------------ Page: {} of {} ----------------".format(page_num, last_page_num))
                 href = tag.find('a', {"href": True})['href']
                 if not href.startswith(r'/ask'):
                     url = BASE_URL + href
                     parse_page_information(url, title, date, author, content, describe)
+
+            # Save the page you are in
+            with open("position_scraping.txt", 'w') as f:
+                f.write("{}\n{}".format(index_page, page_num))
 
 
 @click.command()
