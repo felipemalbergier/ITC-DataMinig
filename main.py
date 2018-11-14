@@ -15,6 +15,9 @@ from datetime import datetime
 import pymysql
 import sys
 import time
+import multiprocessing
+from functools import partial
+
 
 BASE_URL = "https://www.investopedia.com"
 VISITED_URLS = set()
@@ -42,11 +45,12 @@ def create_db():
     author_id int, 
     category_id int, 
     content TEXT, 
-    
+
     PRIMARY KEY(id) 
      /* FOREIGN KEY (author_id) REFERENCES authors(id)
     FOREIGN KEY (category_id) REFERENCES categories(id) */
     );""")
+    cur.execute("""ALTER TABLE article_information MODIFY content MEDIUMTEXT CHARACTER SET utf8;""")
     con.commit()
     con.close()
 
@@ -66,7 +70,13 @@ def url_to_soup(url):
             time.sleep(15)
             print(e)
             sys.exit()
+        except Exception as e:
+            print(e)
+        print("Tries: {}".format(tries))
+
     soup = BeautifulSoup(r.text, 'lxml')
+    if not r.ok:
+        return None
     return soup
 
 
@@ -77,7 +87,7 @@ def insert_db(url, title, date, author, category, content):
         author_id = cur.execute("INSERT INTO authors (name) VALUES (%s)", [author])
         con.commit()
     except pymysql.err.IntegrityError:
-        print("Already on the database - Author: {}.".format(author))
+        # print("Already on the database - Author: {}.".format(author))
         cur.execute("Select id from authors where name = (%s)", [author])
         author_id = cur.fetchone()[0]
 
@@ -85,7 +95,7 @@ def insert_db(url, title, date, author, category, content):
         category_id = cur.execute("INSERT INTO categories (name) VALUES (%s)", [category])
         con.commit()
     except pymysql.err.IntegrityError:
-        print("Already on the database - Category: {}.".format(category))
+        # print("Already on the database - Category: {}.".format(category))
         cur.execute("Select id from categories where name = (%s)", category)
         category_id = cur.fetchone()[0]
 
@@ -94,11 +104,22 @@ def insert_db(url, title, date, author, category, content):
         cur.execute(
             "INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)",
             values)
+        print(".", end="")
     except pymysql.err.IntegrityError:
-        print("Already on the database - URL: {}.".format(url))
+        # print("Already on the database - URL: {}.".format(url))
+        print(":", end="")
     except pymysql.err.InternalError as e:
-        with open("could_not_store_data.txt", 'a') as f:
-            f.write('{}\t{}\n'.format(url, str(e)))
+        try:
+            print("2", end="")
+            time.sleep(5)
+            cur.execute(
+                "INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)",
+                values)
+            print(".", end="")
+        except pymysql.err.InternalError as e:
+            print("|",end="")
+            with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
+                f.write('{}\t{}\t{}\n'.format(datetime.now(), url, str(e)))
     con.commit()
     con.close()
 
@@ -107,15 +128,58 @@ def parse_page_information(url, title, date, author, content, describe):
     """Prints (for now) the article information in the page depending on the parameters given."""
     soup = url_to_soup(url)
 
-    article_category = soup.find('meta', {'property': 'emailprimarychannel'})['content']
-    article_category = article_category.lower()
-    article_title = soup.find('h1').text.strip()
-    article_date = soup.find('meta', {'property': "article:published_time"})['content']
-    article_date = datetime.strptime(article_date.rsplit('-', 1)[0], r"%Y-%m-%dT%H:%M:%S")
-    article_author = soup.find('meta', {'name': 'author'})['content']
+    if not soup:
+        return
+
+    article_category = soup.find('meta', {'property': 'emailprimarychannel'})
+    if article_category:
+        article_category = article_category['content']
+    else:
+        article_category = soup.find('meta', {'property': "emailprimarysubchannel"})
+        if article_category:
+            article_category = article_category['content']
+
+    article_title = soup.find('h1')
+    if article_title:
+        article_title = article_title.text.strip()
+
+    article_date = soup.find('meta', {'property': "article:published_time"})
+    if article_date:
+        article_date = soup.find('meta', {'property': "article:published_time"})['content']
+
+    article_author = soup.find('meta', {'name': 'author'})
+    if article_author:
+        article_author = article_author['content']
+
     article_content = soup.find('div', {'class': 'content-box'})
     if not article_content:
+        print("!",end="")
         article_content = soup.find('div', {'class': 'roth__content'})
+
+    # check if everything has value
+    if not article_category:
+        with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
+            f.write('{}\t{}\t{}\n'.format(datetime.now(), url, "Category was None"))
+        return
+    if not article_author:
+        with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
+            f.write('{}\t{}\t{}\n'.format(datetime.now(), url, "Author was None"))
+        return
+    if not article_content:
+        with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
+            f.write('{}\t{}\t{}\n'.format(datetime.now(), url, "Content was None"))
+        return
+    if not article_date:
+        with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
+            f.write('{}\t{}\t{}\n'.format(datetime.now(), url, "Date was None"))
+        return
+    if not article_title:
+        with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
+            f.write('{}\t{}\t{}\n'.format(datetime.now(), url, "Title was None"))
+        return
+
+    article_category = article_category.lower()
+    article_date = datetime.strptime(article_date.rsplit('-', 1)[0], r"%Y-%m-%dT%H:%M:%S")
 
     insert_db(url, article_title, article_date, article_author, article_category, article_content)
 
@@ -125,8 +189,8 @@ def parse_page_information(url, title, date, author, content, describe):
         author = True
         content = True
 
-    print("-" * 40)
-    print('URL: {url}'.format(url=url))
+    # print("-" * 40)
+    # print('URL: {url}'.format(url=url))
     if title:
         print('Title: {title}'.format(title=article_title))
     if date:
@@ -170,10 +234,19 @@ def run_scrape_whole_website(title, date, author, content, describe):
         VISITED_URLS.add(url_to_visit)
 
 
+def get_urls(soup):
+    h3 = soup.find_all('h3')
+
+    hrefs = [tag.find('a', {"href": True})['href'] for tag in h3]
+    urls = [BASE_URL + href for href in hrefs if not href.startswith(r'/ask')]
+
+    return urls
+
+
 def run_scrape_indexes_pages(title, date, author, content, describe):
     """Scrape articles iterating from the index pages"""
     try:
-        with open("position_scraping.txt") as f:
+        with open(os.path.join(sys.path[0], "position_scraping.txt")) as f:
             index_page, page_num = f.read().splitlines()
     except FileNotFoundError:
         page_num = 0
@@ -184,6 +257,7 @@ def run_scrape_indexes_pages(title, date, author, content, describe):
 
     # Loop in the index pages listed in index_pages.txt file
     for index_page in index_pages[index_pages.index(index_page):]:
+
         soup = url_to_soup("{index_page}?page={page_num}".format(index_page=index_page, page_num=0))
 
         # Get the number os pages
@@ -191,21 +265,24 @@ def run_scrape_indexes_pages(title, date, author, content, describe):
         last_page_num = int(re.findall(r"page=(\d+)", last_page_href)[0])
 
         # For each page scrape the content for each article
-        for page_num in range(int(page_num), last_page_num):
+        for page_num in range(int(page_num), last_page_num + 1):
             soup = url_to_soup("{index_page}?page={page_num}".format(index_page=index_page, page_num=page_num))
 
-            h3 = soup.find_all('h3')
-            for tag in h3:
-                print("------------------ Page: {} of {} ----------------".format(page_num, last_page_num))
-                href = tag.find('a', {"href": True})['href']
-                if not href.startswith(r'/ask'):
-                    url = BASE_URL + href
-                    parse_page_information(url, title, date, author, content, describe)
+            print("\n-------------- Page: {} of {} --------------".format(page_num, last_page_num))
+            urls = get_urls(soup)
+
+            ##for debugging:
+            # for url in urls:
+            #     parse_page_information( title = title, author = author, date = date, content = content, describe = describe, url=url)
+
+            with multiprocessing.Pool(10) as pool:
+                pool.map(partial(parse_page_information, title=title, author=author, date=date, content=content, describe=describe), urls)
+                #parse_page_information(url, title, date, author, content, describe)
 
             # Save the page you are in
-            with open("position_scraping.txt", 'w') as f:
-                f.write("{}\n{}".format(index_page, page_num))
-
+            with open(os.path.join(sys.path[0], "position_scraping.txt"), 'w') as f:
+                f.write("{}\n{}".format(index_page, int(page_num) + 1))
+        page_num = 0
 
 @click.command()
 @click.option('--title', is_flag=True)
