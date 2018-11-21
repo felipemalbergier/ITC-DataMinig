@@ -58,7 +58,7 @@ def create_db():
 def url_to_soup(url):
     """Returns a soup object from the 'url' given."""
     headers = {
-        'User-Agent': UserAgent().random,
+        'User-Agent': UserAgent(verify_ssl=False).random,
         'From': 'youremail@domain.com'  # This is another valid field
     }
     for tries in range(5):
@@ -129,6 +129,7 @@ def parse_page_information(url, title, date, author, content, describe):
     soup = url_to_soup(url)
 
     if not soup:
+        print("AEW", end='')
         return
 
     article_category = soup.find('meta', {'property': 'emailprimarychannel'})
@@ -155,6 +156,9 @@ def parse_page_information(url, title, date, author, content, describe):
     if not article_content:
         print("!",end="")
         article_content = soup.find('div', {'class': 'roth__content'})
+        if not article_content:
+            print("@", end="")
+            article_content = soup.find('div', {'class': 'fa-question'})
 
     # check if everything has value
     if not article_category:
@@ -238,7 +242,7 @@ def get_urls(soup):
     h3 = soup.find_all('h3')
 
     hrefs = [tag.find('a', {"href": True})['href'] for tag in h3]
-    urls = [BASE_URL + href for href in hrefs if not href.startswith(r'/ask')]
+    urls = [BASE_URL + href for href in hrefs] #if not href.startswith(r'/ask')]
 
     return urls
 
@@ -271,11 +275,11 @@ def run_scrape_indexes_pages(title, date, author, content, describe):
             print("\n-------------- Page: {} of {} --------------".format(page_num, last_page_num))
             urls = get_urls(soup)
 
-            ##for debugging:
+            # ##for debugging:
             # for url in urls:
             #     parse_page_information( title = title, author = author, date = date, content = content, describe = describe, url=url)
 
-            with multiprocessing.Pool(10) as pool:
+            with multiprocessing.Pool(14) as pool:
                 pool.map(partial(parse_page_information, title=title, author=author, date=date, content=content, describe=describe), urls)
                 #parse_page_information(url, title, date, author, content, describe)
 
