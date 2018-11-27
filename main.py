@@ -18,7 +18,6 @@ import time
 import multiprocessing
 from functools import partial
 
-
 BASE_URL = "https://www.investopedia.com"
 VISITED_URLS = set()
 
@@ -28,6 +27,7 @@ DB = 'investopedia'
 
 
 def create_db():
+    """Creates the database"""
     con = pymysql.connect(user=USERNAME, password=PASSWRD)
     cur = con.cursor()
     cur.execute("CREATE DATABASE IF NOT EXISTS {} ;".format(DB))
@@ -81,6 +81,7 @@ def url_to_soup(url):
 
 
 def insert_db(url, title, date, author, category, content):
+    """Insert the article information into the database"""
     con = pymysql.connect(user=USERNAME, password=PASSWRD, db=DB)
     cur = con.cursor()
     try:
@@ -100,7 +101,9 @@ def insert_db(url, title, date, author, category, content):
         category_id = cur.fetchone()[0]
 
     values = [url, title, date, author_id, category_id, content.text]
+
     try:
+        already_parsed = False
         cur.execute(
             "INSERT INTO article_information (url, title, date, author_id, category_id, content) VALUES (%s, %s, %s, %s, %s, %s)",
             values)
@@ -108,6 +111,7 @@ def insert_db(url, title, date, author, category, content):
     except pymysql.err.IntegrityError:
         # print("Already on the database - URL: {}.".format(url))
         print(":", end="")
+        already_parsed = True
     except pymysql.err.InternalError as e:
         try:
             print("2", end="")
@@ -117,11 +121,14 @@ def insert_db(url, title, date, author, category, content):
                 values)
             print(".", end="")
         except pymysql.err.InternalError as e:
-            print("|",end="")
+            print("|", end="")
             with open(os.path.join(sys.path[0], "could_not_store_data.txt"), 'a') as f:
                 f.write('{}\t{}\t{}\n'.format(datetime.now(), url, str(e)))
+            already_parsed = True
+
     con.commit()
     con.close()
+    return already_parsed
 
 
 def parse_page_information(url, title, date, author, content, describe):
@@ -129,7 +136,6 @@ def parse_page_information(url, title, date, author, content, describe):
     soup = url_to_soup(url)
 
     if not soup:
-        print("AEW", end='')
         return
 
     article_category = soup.find('meta', {'property': 'emailprimarychannel'})
@@ -154,7 +160,7 @@ def parse_page_information(url, title, date, author, content, describe):
 
     article_content = soup.find('div', {'class': 'content-box'})
     if not article_content:
-        print("!",end="")
+        print("!", end="")
         article_content = soup.find('div', {'class': 'roth__content'})
         if not article_content:
             print("@", end="")
@@ -185,7 +191,7 @@ def parse_page_information(url, title, date, author, content, describe):
     article_category = article_category.lower()
     article_date = datetime.strptime(article_date.rsplit('-', 1)[0], r"%Y-%m-%dT%H:%M:%S")
 
-    insert_db(url, article_title, article_date, article_author, article_category, article_content)
+    already_parsed = insert_db(url, article_title, article_date, article_author, article_category, article_content)
 
     if describe:
         title = True
@@ -204,8 +210,10 @@ def parse_page_information(url, title, date, author, content, describe):
     if content:
         print('Len of Content: {len_content}'.format(len_content=len(article_content.text)))
 
+    return already_parsed
 
-def get_list_href(url):
+
+def get_hrefs(url):
     """Returns a list of hrefs links fond on the 'url'. It also concatenate the href with the base url."""
     soup = url_to_soup(url)
     hrefs = soup.find_all('', {'href': True})
@@ -232,7 +240,7 @@ def run_scrape_whole_website(title, date, author, content, describe):
             print('.')
         except TypeError:
             print('.')
-        news_href = get_list_href(url_to_visit)
+        news_href = get_hrefs(url_to_visit)
         URLS_TO_VISIT += news_href
 
         VISITED_URLS.add(url_to_visit)
@@ -242,12 +250,12 @@ def get_urls(soup):
     h3 = soup.find_all('h3')
 
     hrefs = [tag.find('a', {"href": True})['href'] for tag in h3]
-    urls = [BASE_URL + href for href in hrefs] #if not href.startswith(r'/ask')]
+    urls = [BASE_URL + href for href in hrefs]  # if not href.startswith(r'/ask')]
 
     return urls
 
 
-def run_scrape_indexes_pages(title, date, author, content, describe):
+def run_scrape_indexes_pages(title, date, author, content, describe, new_articles):
     """Scrape articles iterating from the index pages"""
     try:
         with open(os.path.join(sys.path[0], "position_scraping.txt")) as f:
@@ -280,27 +288,33 @@ def run_scrape_indexes_pages(title, date, author, content, describe):
             #     parse_page_information( title = title, author = author, date = date, content = content, describe = describe, url=url)
 
             with multiprocessing.Pool(14) as pool:
-                pool.map(partial(parse_page_information, title=title, author=author, date=date, content=content, describe=describe), urls)
-                #parse_page_information(url, title, date, author, content, describe)
+                already_parsed_pages = pool.map(
+                    partial(parse_page_information, title=title, author=author, date=date, content=content,
+                            describe=describe), urls)
+            if all(already_parsed_pages) and new_articles:
+                break
 
             # Save the page you are in
             with open(os.path.join(sys.path[0], "position_scraping.txt"), 'w') as f:
                 f.write("{}\n{}".format(index_page, int(page_num) + 1))
         page_num = 0
 
+
 @click.command()
-@click.option('--title', is_flag=True)
-@click.option('--date', is_flag=True)
-@click.option('--author', is_flag=True)
-@click.option('--content', is_flag=True)
-@click.option('--describe', is_flag=True)
-@click.option('--scrape_whole_website', is_flag=True)
-def main(title, date, author, content, describe, scrape_whole_website=False):
+@click.option('--title', is_flag=True, help="Activate this flag to print the article's title.")
+@click.option('--date', is_flag=True, help="Activate this flag to print the article's publish date.")
+@click.option('--author', is_flag=True, help="Activate this flag to print the article's author.")
+@click.option('--content', is_flag=True, help='Activate this flag to print the length of the article content.')
+@click.option('--describe', is_flag=True, help="Activate this flag to print all the content scraped.")
+@click.option('--scrape_whole_website', is_flag=True,
+              help="Activate this flag to trough all the website links instead of just the index pages.")
+@click.option('--new_articles', is_flag=True, help="Activate this flag to scrape only new articles.")
+def main(title, date, author, content, describe, scrape_whole_website, new_articles):
     # create_db()
     if scrape_whole_website:
         run_scrape_whole_website(title, date, author, content, describe)
     else:
-        run_scrape_indexes_pages(title, date, author, content, describe)
+        run_scrape_indexes_pages(title, date, author, content, describe, new_articles)
 
 
 if __name__ == "__main__":
