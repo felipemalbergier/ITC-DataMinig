@@ -5,7 +5,6 @@ It is a project at ITC - Israel Tech Challange Program.
 
 Authors: Felipe Malbergier and Shalom Azar
 """
-
 import click
 import scrapper_handler
 import api_handler

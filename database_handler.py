@@ -3,10 +3,24 @@ import time
 import os
 import sys
 from datetime import datetime
+import json
 
-USERNAME = 'root'
-PASSWRD = 'sqlvaldo'
+USERNAME = 'user1'
+PASSWRD = '1234'
 DB = 'investopedia'
+
+
+def get_config():
+    with open('config.txt') as f:
+        config = json.loads(f.read())
+    return config
+
+
+def set_config(key, symbol):
+    config = get_config()
+    config[key] = symbol
+    with open('config.txt', 'w') as f:
+        f.write(json.dumps(config))
 
 
 def create_db():
@@ -118,7 +132,7 @@ def insert_api(date, symbol, open_, high, low, close, volume):
             already_inserted = True
             break
         except pymysql.err.InternalError as e:
-            print("5",e)
+            print("5", e)
             time.sleep(5)
 
     con.commit()

@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import multiprocessing
-from functools import partial
 import re
 from fake_useragent import UserAgent
 import time
@@ -107,7 +106,8 @@ def parse_page_information(url):
     article_category = article_category.lower()
     article_date = datetime.strptime(article_date.rsplit('-', 1)[0], r"%Y-%m-%dT%H:%M:%S")
 
-    already_parsed = database_handler.insert_article_information(url, article_title, article_date, article_author, article_category,
+    already_parsed = database_handler.insert_article_information(url, article_title, article_date, article_author,
+                                                                 article_category,
                                                                  article_content)
 
     return already_parsed
