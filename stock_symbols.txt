@@ -339,7 +339,6 @@ Computer Associates International, Inc. CA $15,857.20
 Clear Channel Communications, Inc. CCU $15,821.10
 Gap, Inc. (The) GPS $15,731.50
 Nike, Inc. NKE $15,671.20
-Forest Laboratories, Inc. FRX $15,633.10
 Allergan, Inc. AGN $15,627.30
 Weatherford International, Inc. WFT $15,567.10
 Natl Bk Greece Ads NBG $15,552.60
@@ -351,15 +350,12 @@ CIGNA Corporation CI $15,294.80
 Transcananda Pipelines, Ltd. TRP $15,226.10
 Biogen Idec Inc BIIB $15,188.60
 Regions Financing Tr I RF $15,141.60
-TPG, N.V. TP $15,073.60
 Nexen, Inc. NXY $14,979.70
 REYNOLDS AMERICAN INC RAI $14,907.30
 Gannett Co., Inc. GCI $14,825.30
 Legg Mason, Inc. LM $14,787.50
-Kraft Foods Inc. KFT $14,764.60
 Omnicom Group Inc. OMC $14,747.60
 Mellon Financial Corporation MEL $14,747.30
-Harley-Davidson, Inc. HDI $14,700.20
 American Electric Power Company, Inc. AEP $14,692.30
 Chicago Mercantile Exchange Holdings CME $14,591.50
 Analog Devices, Inc. ADI $14,588.90
