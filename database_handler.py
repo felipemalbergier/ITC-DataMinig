@@ -5,8 +5,8 @@ import sys
 from datetime import datetime
 import json
 
-USERNAME = 'user1'
-PASSWRD = '1234'
+USERNAME = 'root'
+PASSWRD = 'sqlvaldo'
 DB = 'investopedia'
 
 

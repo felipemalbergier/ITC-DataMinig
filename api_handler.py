@@ -44,7 +44,8 @@ def get_stock_prices(new_information):
     ast_stock_scraped = database_handler.get_config()['api_position']
     stock_symbols = get_stock_symbols()
 
-    for stock_to_scrape in stock_symbols[stock_symbols.index(ast_stock_scraped) + 1:]:
+    # for stock_to_scrape in stock_symbols[stock_symbols.index(ast_stock_scraped) + 1:]:
+    for stock_to_scrape in stock_symbols:
         print("\n" + stock_to_scrape)
         stock_prices = fetch_api_info(stock_to_scrape)
 
