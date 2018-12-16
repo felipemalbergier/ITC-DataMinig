@@ -22,6 +22,7 @@ def get_stock_symbols():
 
 IGNORED_SYMBOLS = ["&", "#"]
 STOCK_SYMBOLS = get_stock_symbols()
+ENGLISH_STOPWORDS = stopwords.words('english')
 
 
 def rejoin_possible_tokens(tokens):
@@ -43,11 +44,11 @@ def rejoin_possible_tokens(tokens):
 def get_stoks_and_tokens(text):
     word_tokens = word_tokenize(text)
     word_tokens = rejoin_possible_tokens(word_tokens)
-    possible_stock_symbols = list(filter(lambda w: re.match(
-        r"^[A-Z0-9]+$", w) and w in STOCK_SYMBOLS, word_tokens))
+    possible_stock_symbols = list(filter(lambda w: re.match(r"^[A-Z0-9]+$", w) and w in STOCK_SYMBOLS, word_tokens))
     # remove punctiation and number and lower case the words
     word_tokens = [word.lower()
-                   for word in word_tokens if not re.match(r"^\W+$|^\d+\W+\d+$", word)]
+                   for word in word_tokens if
+                   not re.match(r"^\W+$|^\d+\W+\d+$", word) and word not in ENGLISH_STOPWORDS]
 
     return word_tokens, possible_stock_symbols
 
@@ -76,7 +77,8 @@ def run_query(query, list_to_insert):
 def main():
     query = "select id, title, content from article_information"
     title_and_content = run_query_gen(query)
-
+    title_and_content = [
+        [1, 'title title a on in felipe', 'and for a case in real time of football scraper in the streets']]
     # MANIPULATE AND INSERT ON DB
     # Important to notice that I've filtered the stocks with the ones that we could scrape.
 
@@ -86,9 +88,13 @@ def main():
         article_tokens, article_stocks = get_stoks_and_tokens(row[2])
 
         query = """INSERT INTO manipulated_data (id, tokenized_title, stocks_mentioned_title, tokenized_article, stocks_mentioned_article) VALUES (%s, %s, %s, %s, %s)"""
-        run_query(query,
-                  [ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
-                   r" ".join(article_stocks)])
+        # run_query(query,
+        #           [ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
+        #            r" ".join(article_stocks)])
+        print(query)
+        print([ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
+               r" ".join(article_stocks)])
+        print(title_and_content)
         if i % 500 == 0:
             print("{}/48,159".format(i), end="\r")
 
