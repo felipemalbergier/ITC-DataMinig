@@ -5,15 +5,16 @@ import sys
 from datetime import datetime
 import json
 
-USERNAME = 'user1'
-PASSWRD = '1234'
-DB = 'investopedia'
-
 
 def get_config():
     with open('config.txt') as f:
         config = json.loads(f.read())
     return config
+
+
+USERNAME = get_config()['mysql']['user']
+PASSWRD = get_config()['mysql']['password']
+DB = get_config()['mysql']['database']
 
 
 def set_config(key, symbol):
