@@ -90,7 +90,7 @@ def insert_manipulated_data(gen):
         #        r" ".join(article_stocks)])
         # print(title_and_content)
         if i % 500 == 0:
-            print("{}/48,159".format(i), end="\r")
+            print("{}/48,159".format(i))
 
 
 def inset_words(gen):
@@ -126,7 +126,8 @@ def inset_words(gen):
                 values.append("title_token")
 
         run_query(query, values)
-        break
+        if i % 500 == 0:
+            print("{}/48,159".format(i))
 
 
 def main():
