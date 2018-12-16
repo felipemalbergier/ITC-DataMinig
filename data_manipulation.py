@@ -77,9 +77,9 @@ def run_query(query, list_to_insert):
 def main():
     query = "select id, title, content from article_information"
     title_and_content = run_query_gen(query)
-    title_and_content = [
-        [1, 'title title a on in felipe', 'and for a case in real time of football scraper in the streets']]
-    # MANIPULATE AND INSERT ON DB
+    # title_and_content = [
+    #     [1, 'title title a on in felipe', 'and for a case in real time of football scraper in the streets']]
+    # # MANIPULATE AND INSERT ON DB
     # Important to notice that I've filtered the stocks with the ones that we could scrape.
 
     for i, row in enumerate(title_and_content):
@@ -88,13 +88,13 @@ def main():
         article_tokens, article_stocks = get_stoks_and_tokens(row[2])
 
         query = """INSERT INTO manipulated_data (id, tokenized_title, stocks_mentioned_title, tokenized_article, stocks_mentioned_article) VALUES (%s, %s, %s, %s, %s)"""
-        # run_query(query,
-        #           [ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
-        #            r" ".join(article_stocks)])
-        print(query)
-        print([ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
-               r" ".join(article_stocks)])
-        print(title_and_content)
+        run_query(query,
+                  [ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
+                   r" ".join(article_stocks)])
+        # print(query)
+        # print([ide, r" ".join(title_tokens), r" ".join(title_stocks), r" ".join(article_tokens),
+        #        r" ".join(article_stocks)])
+        # print(title_and_content)
         if i % 500 == 0:
             print("{}/48,159".format(i), end="\r")
 
