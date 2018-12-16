@@ -74,15 +74,9 @@ def run_query(query, list_to_insert):
     con.close()
 
 
-def main():
-    query = "select id, title, content from article_information"
-    title_and_content = run_query_gen(query)
-    # title_and_content = [
-    #     [1, 'title title a on in felipe', 'and for a case in real time of football scraper in the streets']]
-    # # MANIPULATE AND INSERT ON DB
+def insert_manipulated_data(gen):
     # Important to notice that I've filtered the stocks with the ones that we could scrape.
-
-    for i, row in enumerate(title_and_content):
+    for i, row in enumerate(gen):
         ide = row[0]
         title_tokens, title_stocks = get_stoks_and_tokens(row[1])
         article_tokens, article_stocks = get_stoks_and_tokens(row[2])
@@ -97,6 +91,50 @@ def main():
         # print(title_and_content)
         if i % 500 == 0:
             print("{}/48,159".format(i), end="\r")
+
+
+def inset_words(gen):
+    for i, row in enumerate(gen):
+        ide, title, content = row
+        title_tokens, title_stocks = get_stoks_and_tokens(title)
+        article_tokens, article_stocks = get_stoks_and_tokens(content)
+
+        query = """INSERT INTO words (id, word, source) VALUES {}"""
+        base_query = "(%s, %s, %s), "
+        num_words = [len(title_stocks), len(article_stocks), len(article_tokens), len(title_tokens)]
+        query = query.format(base_query * sum(num_words))
+        query = query.rsplit(',', 1)[0] + ';'
+
+        # print(query)
+        values = []
+        for ii in range(max(num_words)):
+            if ii < num_words[0]:
+                values.append(ide)
+                values.append(title_stocks[ii])
+                values.append("title_stock")
+            if ii < num_words[1]:
+                values.append(ide)
+                values.append(article_stocks[ii])
+                values.append("article_stock")
+            if ii < num_words[2]:
+                values.append(ide)
+                values.append(article_tokens[ii])
+                values.append("article_token")
+            if ii < num_words[3]:
+                values.append(ide)
+                values.append(title_tokens[ii])
+                values.append("title_token")
+
+        run_query(query, values)
+        break
+
+
+def main():
+    print('started')
+    query = "select id, title, content from article_information order by 1 desc"
+    title_and_content = run_query_gen(query)
+    # insert_manipulated_data(title_and_content)
+    inset_words(title_and_content)
 
 
 if __name__ == '__main__':
