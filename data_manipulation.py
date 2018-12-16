@@ -48,7 +48,7 @@ def get_stoks_and_tokens(text):
     # remove punctiation and number and lower case the words
     word_tokens = [word.lower()
                    for word in word_tokens if
-                   not re.match(r"^\W+$|^\d+\W+\d+$", word) and word not in ENGLISH_STOPWORDS]
+                   not re.match(r"^\W+$|^\d+\W*\d*$|'\w+", word) and word not in ENGLISH_STOPWORDS]
 
     return word_tokens, possible_stock_symbols
 
