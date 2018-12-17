@@ -42,9 +42,11 @@ def rejoin_possible_tokens(tokens):
 
 
 def get_stoks_and_tokens(text):
-    word_tokens = word_tokenize(text)
-    word_tokens = rejoin_possible_tokens(word_tokens)
-    possible_stock_symbols = list(filter(lambda w: re.match(r"^[A-Z0-9]+$", w) and w in STOCK_SYMBOLS, word_tokens))
+    word_tokens_stocks = word_tokenize(text)
+    word_tokens_stocks = rejoin_possible_tokens(word_tokens_stocks)
+    possible_stock_symbols = list(
+        filter(lambda w: re.match(r"^[A-Z0-9]+$", w) and w in STOCK_SYMBOLS, word_tokens_stocks))
+    word_tokens = word_tokenize(text.lower())
     # remove punctiation and number and lower case the words
     word_tokens = [word.lower()
                    for word in word_tokens if
@@ -78,6 +80,7 @@ def insert_manipulated_data(gen):
     # Important to notice that I've filtered the stocks with the ones that we could scrape.
     for i, row in enumerate(gen):
         ide = row[0]
+        print(row)
         title_tokens, title_stocks = get_stoks_and_tokens(row[1])
         article_tokens, article_stocks = get_stoks_and_tokens(row[2])
 
@@ -99,8 +102,8 @@ def inset_words(gen):
         title_tokens, title_stocks = get_stoks_and_tokens(title)
         article_tokens, article_stocks = get_stoks_and_tokens(content)
 
-        query = """INSERT INTO words (id, word, source) VALUES {}"""
-        base_query = "(%s, %s, %s), "
+        query = """INSERT INTO words (article_id, word, source) VALUES {}"""
+        base_query = """(%s, %s, %s), """
         num_words = [len(title_stocks), len(article_stocks), len(article_tokens), len(title_tokens)]
         query = query.format(base_query * sum(num_words))
         query = query.rsplit(',', 1)[0] + ';'
